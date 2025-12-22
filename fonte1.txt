@@ -1,0 +1,65 @@
+// Comentário 1 $ 123 .45 ==
+/*
+ Comentário 2
+ $ 123 .45 ==
+*/
+
+papibaquigrafar "biblioteca";
+
+void funcao(int x){
+    int y = 10;
+    y = x+ 2 * 3 / 5 - 12;
+}
+
+int func2(){
+    int z= 2**4 & 1;
+    ++z;
+    z--;
+}
+
+int main() {
+    int a = 123;
+    float pi = 3.14159265358;
+    double c = 1e5;
+    char d = 'D';
+    char* hello = "world";
+    funcao(1);
+    func2();
+
+    if (a < pi){
+        a++;
+        c *= 1.1;
+    }
+    else a--;
+
+    if(a < pi && b > 10){
+        b++;
+        if(a < pi) c++;
+    } else{
+        b += 10;
+    }
+
+    for (int i=0; i<=5; i++) {
+        if (i & 1) continue;
+        c /= 1.1;
+    }
+
+    while(1){
+        print("mensagem");
+    }
+
+    papibagrifar (valor) {
+        case 1:
+            a++;
+        case 2:
+            funcao(1);
+            break;
+        case 3:
+            outraFuncao();
+        default:
+            funcaoDefault();
+            break;
+    }
+    
+    return 0;
+}

@@ -1,0 +1,666 @@
+// CLexer.jj
+
+options {
+  STATIC = false;
+}
+
+PARSER_BEGIN(CLexer)
+
+import parser.ParserNode;
+import java.io.StringReader;
+import java.util.Map;
+import exception.LexicalException;
+
+public class CLexer {
+    private Map<String, Token> symbolTable;
+    private Map<String, Token> reservedWordTable;
+
+    public void setTables(Map<String, Token> symbolTable, Map<String, Token> reservedWordTable) {
+        this.symbolTable = symbolTable;
+        this.reservedWordTable = reservedWordTable;
+    }
+
+    private void recordToken() {
+        Token t = getToken(0);
+        reservedWordTable.putIfAbsent(t.image, t);
+    }
+
+    final public void throwSyntacticError(String message) throws ParseException {
+        Token currentToken = getToken(0);
+        throw new ParseException(message + " (linha: " + currentToken.beginLine + ", coluna: " + currentToken.beginColumn + ").");
+    }
+
+}
+
+PARSER_END(CLexer)
+
+// Ignorar espaços, quebra de linha e comentários
+SKIP : { " " }
+SKIP : { "\t" }
+SKIP : { "\n" }
+SKIP : { "\r" }
+SKIP : { <"//" (~["\n","\r"])* ("\n"|"\r"|"\r\n")> } // Comentário em uma linha única
+SKIP : { <"/*" (~["*"])* "*" ("*" | (~["*","/"] (~["*"])* "*"))* "/"> } // Comentários de múltiplas linhas
+
+// Tokens auxiliares
+TOKEN: {
+    < #LETTER: ["a"-"z", "A"-"Z"] >
+    | < #DIGIT: ["0"-"9"] >
+}
+
+// Palavras reservadas (Keywords)
+TOKEN : { < KW_BREAK: "break" > }
+TOKEN : { < KW_CASE: "case" > }
+TOKEN : { < KW_CHAR: "char" > }
+TOKEN : { < KW_CONTINUE: "continue" > }
+TOKEN : { < KW_DEFAULT: "default" > }
+TOKEN : { < KW_DOUBLE: "double" > }
+TOKEN : { < KW_ELSE: "else" > }
+TOKEN : { < KW_FLOAT: "float" > }
+TOKEN : { < KW_FOR: "for" > }
+TOKEN : { < KW_IF: "if" > }
+TOKEN : { < KW_INT: "int" > }
+TOKEN : { < KW_LONG: "long" > }
+TOKEN : { < KW_PAPIBAGRIFAR: "papibagrifar" > }
+TOKEN : { < KW_PAPIBAQUIGRAFAR: "papibaquigrafar" > }
+TOKEN : { < KW_RETURN: "return" > }
+TOKEN : { < KW_SIGNED: "signed" > }
+TOKEN : { < KW_SIZEOF: "sizeof" > }
+TOKEN : { < KW_STRUCT: "struct" > }
+TOKEN : { < KW_TYPEDEF: "typedef" > }
+TOKEN : { < KW_UNSIGNED: "unsigned" > }
+TOKEN : { < KW_VOID: "void" > }
+TOKEN : { < KW_WHILE: "while" > }
+
+// Operadores
+TOKEN : {
+  < PLUS: "+" >
+  | < MINUS: "-" >
+  | < STAR: "*" >
+  | < DIVIDE: "/" >
+  | < MODULO: "%" >
+  | < EXPO: "**" >
+  | < ASSIGN: "=" >
+  | < EQ: "==" >
+  | < NE: "!=" >
+  | < LT: "<" >
+  | < GT: ">" >
+  | < LE: "<=" >
+  | < GE: ">=" >
+  | < AND: "&&" >
+  | < OR: "||" >
+  | < NOT: "!" >
+  | < INC: "++" >
+  | < DEC: "--" >
+  | < PLUS_ASSIGN: "+=" >
+  | < MINUS_ASSIGN: "-=" >
+  | < MULTIPLY_ASSIGN: "*=" >
+  | < DIVIDE_ASSIGN: "/=" >
+  | < MODULO_ASSIGN: "%=" >
+  | < QUESTION: "?" >
+  | < COLON: ":" >
+  | < BIT_AND: "&" >
+  | < BIT_AND_ASSIGN: "&=" >
+  | < BIT_OR: "|" >
+  | < BIT_OR_ASSIGN: "|=" >
+  | < BIT_XOR: "^" >
+  | < BIT_XOR_ASSIGN: "^=" >
+  | < BIT_NOT: "~" >
+  | < BIT_NOT_ASSIGN: "~=" >
+  | < LSHIFT: "<<" >
+  | < LSHIFT_ASSIGN: "<<=" >
+  | < RSHIFT: ">>" >
+  | < RSHIFT_ASSIGN: ">>=" >
+
+  |< INVALID_OPERATOR: "===" | "$" | "..." >
+}
+
+// delimitadores e separadores
+TOKEN : {
+    < LPAREN: "(" >
+  | < RPAREN: ")" >
+  | < LBRACE: "{" >
+  | < RBRACE: "}" >
+  | < SEMICOLON: ";" >
+  | < COMMA: "," >
+  | < LBRACKET: "[" >
+  | < RBRACKET: "]" >
+  | < DOT: "." >
+  | < ARROW: "->" >
+}
+
+
+// Literais e erros literais
+TOKEN : {
+  // Erros
+    < UNTERMINATED_CHAR: "'" (~["'","\n","\r"])? ("\n"|"\r"|"\r\n") >
+  | < MULTIPLE_DECIMAL_POINTS: (<DIGIT>)+ "." (<DIGIT>)* "." (<DIGIT>)* >
+
+  | < DECIMAL_LITERAL:
+        (<DIGIT>)+ "." (<DIGIT>)* (("e"|"E") (<PLUS>|<MINUS>)? (<DIGIT>)+)?
+      | "." (<DIGIT>)+ (("e"|"E") (<PLUS>|<MINUS>)? (<DIGIT>)+)?
+      | (<DIGIT>)+ ("e"|"E") (<PLUS>|<MINUS>)? (<DIGIT>)+
+  >
+  | < INTEGER_LITERAL: (<DIGIT>)+ >
+  | < CHAR_LITERAL: "'" ("\\")? (~["'","\n","\r"]) "'" >
+  | < STRING_LITERAL: "\"" (~["\"","\n","\r"])* "\"" >
+}
+
+// Identificadores, para funções, variáveis etc
+TOKEN : {
+  < IDENTIFIER: (<LETTER> | "_") (<LETTER>|<DIGIT>|"_")* >
+  | < INVALID_IDENTIFIER: (<DIGIT>)+ (<LETTER>|<DIGIT>|"_")* > // precisa vir depois do número, senão número seria considerado um identificador
+}
+
+// ----------- Regras sintáticas ---------
+
+// Tipos
+void typeSpecifier(ParserNode parent):
+{
+    ParserNode node = new ParserNode("typeSpecifier");
+    parent.addChild(node);
+}
+{
+    (<KW_CHAR> { recordToken(); node.addChild(new ParserNode("KW_CHAR")); }
+    | <KW_FLOAT> { recordToken(); node.addChild(new ParserNode("KW_FLOAT")); }
+    | <KW_INT> { recordToken(); node.addChild(new ParserNode("KW_INT")); }
+    | <KW_LONG>  { recordToken(); node.addChild(new ParserNode("KW_LONG")); }
+    | <KW_DOUBLE> { recordToken(); node.addChild(new ParserNode("KW_DOUBLE")); }
+    | <KW_VOID> { recordToken(); node.addChild(new ParserNode("KW_VOID")); }
+    | <IDENTIFIER> { Token t = getToken(0); symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); })
+    (<STAR> { recordToken(); node.addChild(new ParserNode("STAR")); })?
+}
+
+// Argumentos de uma função
+void functionArguments(ParserNode parent):
+{
+    ParserNode node = new ParserNode("functionArguments");
+    parent.addChild(node);
+}
+{
+    (expression(node) (<COMMA> { recordToken(); node.addChild(new ParserNode("COMMA")); } expression(node))*)?
+}
+
+// Chamada de uma função
+void functionCallStatement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("functionCallStatement");
+    parent.addChild(node);
+    Token t;
+}
+{
+    t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); }
+    <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); }
+    functionArguments(node)
+    <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN")); }
+    endOfStatement(node)
+}
+
+// parâmetro de uma função
+void parameter(ParserNode parent):
+{
+    ParserNode node = new ParserNode("parameter");
+    parent.addChild(node);
+    Token t;
+}
+{
+    typeSpecifier(node)
+    t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); }
+}
+
+// parâmetros de uma função
+void functionParams(ParserNode parent):
+{
+    ParserNode node = new ParserNode("functionParams");
+    parent.addChild(node);
+}
+{
+    (parameter(node) ( <COMMA> {recordToken(); node.addChild(new ParserNode("COMMA")); } parameter(node) )* )?
+}
+
+// declaração de uma função
+void functionDeclaration(ParserNode parent):
+{
+    ParserNode node = new ParserNode("functionDeclaration");
+    parent.addChild(node);
+    Token t;
+}
+{
+     typeSpecifier(node)
+     t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); }
+     <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); }
+     functionParams(node)
+     <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN")); }
+     block(node)
+}
+
+// retorno de uma função
+void functionReturnStatement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("functionReturnStatement");
+    parent.addChild(node);
+}
+{
+    <KW_RETURN> { recordToken(); node.addChild(new ParserNode("KW_RETURN")); }
+    ( LOOKAHEAD(2) expression(node))?
+    endOfStatement(node)
+}
+
+// loop for
+void forStatement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("forStatement");
+    parent.addChild(node);
+}
+{
+     <KW_FOR>  { recordToken(); node.addChild(new ParserNode("KW_FOR")); }
+     <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); }
+     (
+        LOOKAHEAD( variableDeclaration() )
+        variableDeclaration(node)
+        |
+        assignmentStatement(node)
+        |
+        <SEMICOLON> { recordToken(); node.addChild(new ParserNode("SEMICOLON")); }
+     )
+     expression(node)
+     <SEMICOLON> { recordToken(); node.addChild(new ParserNode("SEMICOLON")); }
+     (expression(node))?
+     <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN")); }
+     statement(node)
+}
+
+// loop while
+void whileStatement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("whileStatement");
+    parent.addChild(node);
+}
+{
+     <KW_WHILE> { recordToken(); node.addChild(new ParserNode("KW_WHILE")); }
+     <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); }
+     expression(node)
+     <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN")); }
+     statement(node)
+}
+
+// bloco
+void block(ParserNode parent):
+{
+    ParserNode node = new ParserNode("block");
+    parent.addChild(node);
+}
+{
+    <LBRACE> { recordToken(); node.addChild(new ParserNode("LBRACE")); }
+    ( LOOKAHEAD(2) statement(node) )*
+    (
+        <RBRACE> { recordToken(); node.addChild(new ParserNode("RBRACE")); }
+        | <EOF> { throwSyntacticError("Erro de sintaxe: o bloco não foi fechado antes do final do arquivo."); }
+    )
+}
+
+void conditionalExpression(ParserNode parent):
+{
+    ParserNode node = new ParserNode("conditionalExpression");
+    parent.addChild(node);
+}
+{
+     <LPAREN> {recordToken(); node.addChild(new ParserNode("LPAREN")); } expression(node) <RPAREN> {recordToken(); node.addChild(new ParserNode("RPAREN")); }
+}
+
+
+void breakStatement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("breakStatement");
+    parent.addChild(node);
+}
+{
+    <KW_BREAK> { recordToken(); node.addChild(new ParserNode("KW_BREAK")); }
+    endOfStatement(node)
+}
+
+void continueStatement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("continueStatement");
+    parent.addChild(node);
+}
+{
+    "continue" { recordToken(); node.addChild(new ParserNode("KW_CONTINUE")); }
+    endOfStatement(node)
+}
+
+void papibagrifarCaseOnlyGroup(ParserNode parent):
+{
+    ParserNode node = new ParserNode("papibagrifarCaseOnlyGroup");
+    parent.addChild(node);
+}
+{
+    (
+        LOOKAHEAD(2)
+        <KW_CASE> { recordToken(); node.addChild(new ParserNode("KW_CASE")); }
+        expression(node)
+        <COLON> { recordToken(); node.addChild(new ParserNode("COLON")); }
+    )+
+    ( statement(node) )*
+}
+
+void papibagrifarDefaultGroup(ParserNode parent):
+{
+    ParserNode node = new ParserNode("papibagrifarDefaultGroup");
+    parent.addChild(node);
+}
+{
+    <KW_DEFAULT> { recordToken(); node.addChild(new ParserNode("KW_DEFAULT")); }
+    <COLON> { recordToken(); node.addChild(new ParserNode("COLON")); }
+    ( statement(node) )*
+}
+
+
+void papibagrifarStatement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("papibagrifarStatement");
+    parent.addChild(node);
+}
+{
+    <KW_PAPIBAGRIFAR> { recordToken(); node.addChild(new ParserNode("KW_PAPIBAGRIFAR")); }
+    <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); }
+    expression(node)
+    <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN")); }
+
+    <LBRACE> { recordToken(); node.addChild(new ParserNode("LBRACE")); }
+    (
+        LOOKAHEAD( (papibagrifarCaseOnlyGroup(node))* papibagrifarDefaultGroup(node) )
+        ( papibagrifarCaseOnlyGroup(node) )*
+        papibagrifarDefaultGroup(node)
+    |
+        ( papibagrifarCaseOnlyGroup(node) )*
+        {
+          throw new ParseException("Erro de sintaxe: a instrução 'papibagrifar' deve conter exatamente um 'default'.");
+        }
+    )
+
+    <RBRACE> { recordToken(); node.addChild(new ParserNode("RBRACE")); }
+}
+
+void conditionalStatement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("conditionalStatement");
+    parent.addChild(node);
+}
+{
+     <KW_IF> { recordToken(); node.addChild(new ParserNode("KW_IF")); }
+     conditionalExpression(node)
+     statement(node)
+     ( LOOKAHEAD(2) <KW_ELSE> { recordToken(); node.addChild(new ParserNode("KW_ELSE")); } statement(node))?
+}
+
+void primaryExpression(ParserNode parent):
+{
+    ParserNode node = new ParserNode("primaryExpression");
+    parent.addChild(node);
+    Token t;
+}
+{
+    t=<INTEGER_LITERAL> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("INTEGER")); }
+    | t=<DECIMAL_LITERAL> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("DECIMAL")); }
+    | t=<CHAR_LITERAL> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("CHAR")); }
+    | t=<STRING_LITERAL> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("STRING")); }
+    | t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); }
+    | <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); } expression(node) <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN")); }
+}
+
+void postfixExpression(ParserNode parent):
+{
+    ParserNode node = new ParserNode("postfixExpression");
+    parent.addChild(node);
+}
+{
+    primaryExpression(node)
+    (
+    LOOKAHEAD(2)
+        (
+            <INC> { recordToken(); node.addChild(new ParserNode("INC")); }
+        |   <DEC> { recordToken(); node.addChild(new ParserNode("DEC")); }
+        )
+    )?
+}
+
+void unaryExpression(ParserNode parent):
+{
+    ParserNode node = new ParserNode("unaryExpression");
+    parent.addChild(node);
+}
+{
+    (
+        <INC>   { recordToken(); node.addChild(new ParserNode("INC")); }
+      | <DEC>   { recordToken(); node.addChild(new ParserNode("DEC")); }
+      | <PLUS>  { recordToken(); node.addChild(new ParserNode("PLUS")); }
+      | <MINUS> { recordToken(); node.addChild(new ParserNode("MINUS")); }
+      | <NOT>   { recordToken(); node.addChild(new ParserNode("NOT")); }
+    )?
+    postfixExpression(node)
+}
+
+void multiplicativeExpression(ParserNode parent):
+{
+    ParserNode node = new ParserNode("multiplicativeExpression");
+    parent.addChild(node);
+}
+{
+    unaryExpression(node)
+    (
+        (
+              <STAR> {recordToken(); node.addChild(new ParserNode("MULTIPLY")); }
+            | <DIVIDE> {recordToken(); node.addChild(new ParserNode("DIVIDE")); }
+            | <MODULO> {recordToken(); node.addChild(new ParserNode("MODULO")); }
+            | <EXPO> {recordToken(); node.addChild(new ParserNode("EXPO")); }
+        )
+        unaryExpression(node)
+    )*
+}
+
+void additiveExpression(ParserNode parent):
+{
+    ParserNode node = new ParserNode("additiveExpression");
+    parent.addChild(node);
+}
+{
+    multiplicativeExpression(node)
+    (
+        LOOKAHEAD(2)
+        ( <PLUS> {recordToken(); node.addChild(new ParserNode("PLUS")); } | <MINUS> {recordToken(); node.addChild(new ParserNode("MINUS")); } )
+        multiplicativeExpression(node)
+    )*
+}
+
+void bitExpression(ParserNode parent):
+{
+    ParserNode node = new ParserNode("bitExpression");
+    parent.addChild(node);
+}
+{
+    additiveExpression(node)
+    (
+        (
+              <BIT_AND> {recordToken(); node.addChild(new ParserNode("BIT_AND")); }
+            | <BIT_NOT> {recordToken(); node.addChild(new ParserNode("BIT_NOT")); }
+            | <BIT_XOR> {recordToken(); node.addChild(new ParserNode("BIT_XOR")); }
+            | <LSHIFT> {recordToken(); node.addChild(new ParserNode("LSHIFT")); }
+            | <RSHIFT> {recordToken(); node.addChild(new ParserNode("RSHIFT")); }
+        )
+        additiveExpression(node)
+    )*
+}
+
+
+void relationalExpression(ParserNode parent):
+{
+    ParserNode node = new ParserNode("relationalExpression");
+    parent.addChild(node);
+}
+{
+    bitExpression(node)
+    (
+        (
+              <LT> {recordToken(); node.addChild(new ParserNode("LT")); }
+            | <GT> {recordToken(); node.addChild(new ParserNode("GT")); }
+            | <LE> {recordToken(); node.addChild(new ParserNode("LE")); }
+            | <GE> {recordToken(); node.addChild(new ParserNode("GE")); }
+            | <EQ> {recordToken(); node.addChild(new ParserNode("EQ")); }
+            | <NE> {recordToken(); node.addChild(new ParserNode("NE")); }
+        )
+        bitExpression(node)
+    )*
+}
+
+void logicalAndExpression(ParserNode parent):
+{
+    ParserNode node = new ParserNode("andExpression");
+    parent.addChild(node);
+}
+{
+    relationalExpression(node)
+    ( <AND> {recordToken(); node.addChild(new ParserNode("AND")); } relationalExpression(node) )*
+}
+
+
+void logicalOrExpression(ParserNode parent):
+{
+    ParserNode node = new ParserNode("logical_or_expression");
+    parent.addChild(node);
+}
+{
+     logicalAndExpression(node)
+     ( <OR>{recordToken(); node.addChild(new ParserNode("OR")); }   logicalAndExpression(node))*
+}
+
+void assignmentOperators(ParserNode parent):
+{
+    ParserNode node = new ParserNode("assignmentOperators");
+    parent.addChild(node);
+}
+{
+      <ASSIGN> {recordToken(); node.addChild(new ParserNode("ASSIGN")); }
+    | <PLUS_ASSIGN> {recordToken(); node.addChild(new ParserNode("PLUS_ASSIGN")); }
+    | <MINUS_ASSIGN> {recordToken(); node.addChild(new ParserNode("MINUS_ASSIGN")); }
+    | <MULTIPLY_ASSIGN> {recordToken(); node.addChild(new ParserNode("MULTIPLY_ASSIGN")); }
+    | <DIVIDE_ASSIGN> {recordToken(); node.addChild(new ParserNode("DIVIDE_ASSIGN")); }
+    | <MODULO_ASSIGN> {recordToken(); node.addChild(new ParserNode("MODULO_ASSIGN")); }
+    | <BIT_XOR_ASSIGN> {recordToken(); node.addChild(new ParserNode("BIT_XOR_ASSIGN")); }
+    | <BIT_AND_ASSIGN> {recordToken(); node.addChild(new ParserNode("BIT_AND_ASSIGN")); }
+    | <BIT_OR_ASSIGN> {recordToken(); node.addChild(new ParserNode("BIT_OR_ASSIGN")); }
+    | <LSHIFT_ASSIGN> {recordToken(); node.addChild(new ParserNode("LSHIFT_ASSIGN")); }
+    | <RSHIFT_ASSIGN> {recordToken(); node.addChild(new ParserNode("RSHIFT_ASSIGN")); }
+}
+
+void assignmentStatement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("assignmentStatement");
+    parent.addChild(node);
+    Token t;
+}
+{
+    t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); }
+    assignmentOperators(node)
+    expression(node)
+    endOfStatement(node)
+}
+
+void importStatement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("import_statement");
+    parent.addChild(node);
+    Token t;
+}
+{
+    <KW_PAPIBAQUIGRAFAR> { recordToken(); node.addChild(new ParserNode("KW_PAPIBAQUIGRAFAR")); }
+    t=<STRING_LITERAL> { symbolTable.putIfAbsent(t.image, t); }
+    endOfStatement(node)
+}
+
+
+// Expressão
+void expression(ParserNode parent):
+{
+    ParserNode node = new ParserNode("expression");
+    parent.addChild(node);
+}
+{
+    logicalOrExpression(node)
+}
+
+void expressionStatement(ParserNode parent) :
+{
+    ParserNode node = new ParserNode("expressionStatement");
+    parent.addChild(node);
+}
+{
+    expression(node)
+    endOfStatement(node)
+}
+
+// Declaração
+void variableDeclaration(ParserNode parent):
+{
+    ParserNode node = new ParserNode("variableDeclaration");
+    parent.addChild(node);
+    Token t;
+}
+{
+    typeSpecifier(node)
+    t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); }
+    (<ASSIGN> { recordToken(); node.addChild(new ParserNode("ASSIGN")); } expression(node))?
+    endOfStatement(node)
+}
+
+// Fim de uma instrução
+void endOfStatement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("endOfStatement");
+    parent.addChild(node);
+}
+{
+      <SEMICOLON> {recordToken(); node.addChild(new ParserNode("SEMICOLON")); }
+    | { throwSyntacticError("Instrução sem ponto e vírgula!"); }
+}
+
+
+void ambiguousStatement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("ambiguousStatement");
+    parent.addChild(node);
+}
+{
+    LOOKAHEAD(4) functionDeclaration(node)
+  | LOOKAHEAD(4) variableDeclaration(node)
+  | LOOKAHEAD(4) functionCallStatement(node)
+  | LOOKAHEAD(4) assignmentStatement(node)
+  | expressionStatement(node)
+}
+
+// Instrução
+void statement(ParserNode parent):
+{
+    ParserNode node = new ParserNode("statement");
+    parent.addChild(node);
+}
+{
+    conditionalStatement(node)
+  | whileStatement(node)
+  | forStatement(node)
+  | papibagrifarStatement(node)
+  | block(node)
+  | importStatement(node)
+  | functionReturnStatement(node)
+  | breakStatement(node)
+  | continueStatement(node)
+  | ambiguousStatement(node)
+}
+
+
+// Inicio
+void start(ParserNode parent): {}
+{
+    ( statement(parent))* <EOF>
+}
+

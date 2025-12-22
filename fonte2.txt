@@ -1,0 +1,40 @@
+// Comentário 1 $ 123 .45 ==
+/*
+ Comentário 2
+ $ 123 .45 ==
+*/
+
+int main() {
+    // caracter invalido
+    a $ b;
+
+    // numero mal formatado
+    float pi = 3.14.159265358;
+
+    // caracter sem estar fechado
+    char d = 'D
+
+    // identificador invalido
+    char* 1hello = "world";
+
+    // sem terminação
+    for (int i=0; i<n; i++) c++
+
+    // switch sem default
+    papibagrifar (valor) {
+        case 1:
+            a++;
+        case 2:
+            funcao(1);
+            break;
+        case 3:
+            outraFuncao();
+    }
+
+    // bloco aberto
+        while(1){
+            print("mensagem");
+
+
+    return 0;
+}
