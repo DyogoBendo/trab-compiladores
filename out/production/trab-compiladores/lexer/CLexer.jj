@@ -6,7 +6,7 @@ options {
 
 PARSER_BEGIN(CLexer)
 
-import parser.ParserNode;
+import lexer.ParseException;import parser.ParserNode;
 import java.io.StringReader;
 import java.util.Map;
 import exception.LexicalException;
@@ -14,10 +14,12 @@ import exception.LexicalException;
 public class CLexer {
     private Map<String, Token> symbolTable;
     private Map<String, Token> reservedWordTable;
+    private SymbolTable identifierTable;
 
-    public void setTables(Map<String, Token> symbolTable, Map<String, Token> reservedWordTable) {
+    public void setTables(Map<String, Token> symbolTable, Map<String, Token> reservedWordTable, SymbolTable identifierTable) {
         this.symbolTable = symbolTable;
         this.reservedWordTable = reservedWordTable;
+        this.identifierTable = identifierTable;
     }
 
     private void recordToken() {
@@ -155,20 +157,40 @@ TOKEN : {
 // ----------- Regras sintáticas ---------
 
 // Tipos
-void typeSpecifier(ParserNode parent):
+String typeSpecifier(ParserNode parent):
 {
     ParserNode node = new ParserNode("typeSpecifier");
     parent.addChild(node);
+    Token t;
+    String tipoEncontrado = "";
 }
 {
-    (<KW_CHAR> { recordToken(); node.addChild(new ParserNode("KW_CHAR")); }
-    | <KW_FLOAT> { recordToken(); node.addChild(new ParserNode("KW_FLOAT")); }
-    | <KW_INT> { recordToken(); node.addChild(new ParserNode("KW_INT")); }
-    | <KW_LONG>  { recordToken(); node.addChild(new ParserNode("KW_LONG")); }
-    | <KW_DOUBLE> { recordToken(); node.addChild(new ParserNode("KW_DOUBLE")); }
-    | <KW_VOID> { recordToken(); node.addChild(new ParserNode("KW_VOID")); }
-    | <IDENTIFIER> { Token t = getToken(0); symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); })
-    (<STAR> { recordToken(); node.addChild(new ParserNode("STAR")); })?
+    (
+      t=<KW_CHAR>   { recordToken(); node.addChild(new ParserNode("KW_CHAR"));   tipoEncontrado = t.image; }
+    | t=<KW_FLOAT>  { recordToken(); node.addChild(new ParserNode("KW_FLOAT"));  tipoEncontrado = t.image; }
+    | t=<KW_INT>    { recordToken(); node.addChild(new ParserNode("KW_INT"));    tipoEncontrado = t.image; }
+    | t=<KW_LONG>   { recordToken(); node.addChild(new ParserNode("KW_LONG"));   tipoEncontrado = t.image; }
+    | t=<KW_DOUBLE> { recordToken(); node.addChild(new ParserNode("KW_DOUBLE")); tipoEncontrado = t.image; }
+    | t=<KW_VOID>   { recordToken(); node.addChild(new ParserNode("KW_VOID"));   tipoEncontrado = t.image; }
+
+    | t=<IDENTIFIER>
+      {
+          identifierTable.checkStruct(t);
+          node.addChild(new ParserNode("IDENTIFIER"));
+          tipoEncontrado = t.image;
+      }
+    )
+
+    (
+        <STAR>
+        {
+            recordToken();
+            node.addChild(new ParserNode("STAR"));
+            tipoEncontrado += "*";
+        }
+    )?
+
+    { return tipoEncontrado; }
 }
 
 // Argumentos de uma função
@@ -189,7 +211,7 @@ void functionCallStatement(ParserNode parent):
     Token t;
 }
 {
-    t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); }
+    t=<IDENTIFIER> { identifierTable.checkFunction(t); node.addChild(new ParserNode("IDENTIFIER")); }
     <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); }
     functionArguments(node)
     <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN")); }
@@ -202,10 +224,11 @@ void parameter(ParserNode parent):
     ParserNode node = new ParserNode("parameter");
     parent.addChild(node);
     Token t;
+    String declaredType;
 }
 {
-    typeSpecifier(node)
-    t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); }
+    declaredType = typeSpecifier(node)
+    t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); identifierTable.add(t, declaredType); node.addChild(new ParserNode("IDENTIFIER")); }
 }
 
 // parâmetros de uma função
@@ -224,14 +247,17 @@ void functionDeclaration(ParserNode parent):
     ParserNode node = new ParserNode("functionDeclaration");
     parent.addChild(node);
     Token t;
+    String typeDeclared;
 }
 {
-     typeSpecifier(node)
-     t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); }
-     <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); }
+     typeDeclared = typeSpecifier(node)
+     t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); identifierTable.add(t, typeDeclared); node.addChild(new ParserNode("IDENTIFIER")); }
+     <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); identifierTable.enterScope();}
      functionParams(node)
      <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN")); }
      block(node)
+     {identifierTable.leaveScope();}
+
 }
 
 // retorno de uma função
@@ -254,7 +280,7 @@ void forStatement(ParserNode parent):
 }
 {
      <KW_FOR>  { recordToken(); node.addChild(new ParserNode("KW_FOR")); }
-     <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); }
+     <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); identifierTable.enterScope();}
      (
         LOOKAHEAD( variableDeclaration() )
         variableDeclaration(node)
@@ -266,8 +292,9 @@ void forStatement(ParserNode parent):
      expression(node)
      <SEMICOLON> { recordToken(); node.addChild(new ParserNode("SEMICOLON")); }
      (expression(node))?
-     <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN")); }
+     <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN"));}
      statement(node)
+     {identifierTable.leaveScope();}
 }
 
 // loop while
@@ -291,10 +318,10 @@ void block(ParserNode parent):
     parent.addChild(node);
 }
 {
-    <LBRACE> { recordToken(); node.addChild(new ParserNode("LBRACE")); }
+    <LBRACE> { recordToken(); node.addChild(new ParserNode("LBRACE")); identifierTable.enterScope(); }
     ( LOOKAHEAD(2) statement(node) )*
     (
-        <RBRACE> { recordToken(); node.addChild(new ParserNode("RBRACE")); }
+        <RBRACE> { recordToken(); node.addChild(new ParserNode("RBRACE")); identifierTable.leaveScope();}
         | <EOF> { throwSyntacticError("Erro de sintaxe: o bloco não foi fechado antes do final do arquivo."); }
     )
 }
@@ -405,7 +432,7 @@ void primaryExpression(ParserNode parent):
     | t=<DECIMAL_LITERAL> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("DECIMAL")); }
     | t=<CHAR_LITERAL> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("CHAR")); }
     | t=<STRING_LITERAL> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("STRING")); }
-    | t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); }
+    | t=<IDENTIFIER> { identifierTable.checkVariable(t); node.addChild(new ParserNode("IDENTIFIER")); }
     | <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); } expression(node) <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN")); }
 }
 
@@ -605,10 +632,16 @@ void variableDeclaration(ParserNode parent):
     ParserNode node = new ParserNode("variableDeclaration");
     parent.addChild(node);
     Token t;
+    String declaredType;
 }
 {
-    typeSpecifier(node)
-    t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); }
+    declaredType= typeSpecifier(node)
+    t=<IDENTIFIER>
+
+    {
+    identifierTable.add(t, declaredType);
+    node.addChild(new ParserNode("IDENTIFIER"));
+}
     (<ASSIGN> { recordToken(); node.addChild(new ParserNode("ASSIGN")); } expression(node))?
     endOfStatement(node)
 }

@@ -3,6 +3,7 @@ package print;
 import comparator.TokenComparator;
 import lexer.CLexerConstants;
 import lexer.Token;
+import symboltable.Symbol;
 import symboltable.SymbolTable;
 
 import java.util.ArrayList;
@@ -26,6 +27,21 @@ public class TablePrintHelper {
             System.out.println("Token: " + token);
             System.out.println("Posição que aparece pela primeira vez (linha, coluna): (" + token.beginLine + "," + token.beginColumn + ")");
             System.out.println("Tipo do token: " + CLexerConstants.tokenImage[token.kind]);
+            System.out.println(DELIMITER);
+        }
+    }
+
+    /**
+     * Imprime tabela de simbolos
+     */
+    public static void printSymbolTable(Map<String, Symbol> map, String title){
+        List<Symbol> symbolList = new ArrayList<>(map.values());
+        System.out.println(DELIMITER + title + DELIMITER);
+
+        for (Symbol symbol : symbolList){
+            System.out.println("Token: " + symbol.getToken());
+            System.out.println("Posição que aparece pela primeira vez (linha, coluna): (" + symbol.getToken().beginLine + "," + symbol.getToken().beginColumn + ")");
+            System.out.println("Tipo do token: " + (symbol.getType() == null  ? "-" : symbol.getType()));
             System.out.println(DELIMITER);
         }
     }

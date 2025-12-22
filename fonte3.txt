@@ -6,9 +6,7 @@
 
 papibaquigrafar "biblioteca";
 
-int b = 100;
-
-void funcao(int x){
+banana funcao(int x){
     int y = 10;
     y = x+ 2 * 3 / 5 - 12;
 }
@@ -19,17 +17,11 @@ int func2(){
     z--;
 }
 
-void print(){
-
-}
-
-void outraFuncao(){}
-void funcaoDefault(){}
-
 int main() {
     int a = 123;
     float pi = 3.14159265358;
     double c = 1e5;
+    int b = 9;
     char d = 'D';
     char* hello = "world";
     funcao(1);
@@ -57,7 +49,6 @@ int main() {
         print("mensagem");
     }
 
-    int valor = 7;
     papibagrifar (valor) {
         case 1:
             a++;
@@ -70,6 +61,6 @@ int main() {
             funcaoDefault();
             break;
     }
-    
+
     return 0;
 }

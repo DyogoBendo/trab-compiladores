@@ -13,6 +13,6 @@ public class SemanticException extends RuntimeException{
 
     @Override
     public String getMessage(){
-        return "Erro sintático na linha " + token.beginLine + ", coluna " + token.beginColumn + ": " + reason;
+        return "Erro semântico na linha " + token.beginLine + ", coluna " + token.beginColumn + ": " + reason;
     }
 }

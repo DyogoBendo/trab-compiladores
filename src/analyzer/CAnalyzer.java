@@ -15,13 +15,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class CAnalyzer {
-    private final SymbolTable symbolTable;
+    private final Map<String, Token> symbolTable;
     private final Map<String, Token> reservedWordTable;
+    private final SymbolTable identifierTable;
     private final ParserNode parserTree;
 
     public CAnalyzer() {
-        symbolTable = new SymbolTable();
+        symbolTable = new HashMap<>();
         reservedWordTable = new HashMap<>();
+        identifierTable = new SymbolTable();
         parserTree = new ParserNode("start");
     }
 
@@ -53,9 +55,10 @@ public class CAnalyzer {
         }
 
         TablePrintHelper.printTable(reservedWordTable, "Tabela de palavras reservadas e operadores");
-        // TablePrintHelper.printTable(symbolTable, "Tabela de símbolos");
+        TablePrintHelper.printTable(symbolTable, "Tabela de símbolos");
+        TablePrintHelper.printSymbolTable(identifierTable.getScopeStack().peek(), "Tabela de identificadores");
 
-        parserTree.print();
+        // parserTree.print();
         parserTree.writeToFile("arvore_" + filename);
     }
 
@@ -82,7 +85,7 @@ public class CAnalyzer {
      */
     private void checkSyntactical(CLexer parser) throws ParseException {
         System.out.println("Análise sintática");
-        parser.setTables(this.symbolTable, this.reservedWordTable);
+        parser.setTables(this.symbolTable, this.reservedWordTable, identifierTable);
         parser.start(this.parserTree);
     }
 
