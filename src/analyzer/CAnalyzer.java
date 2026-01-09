@@ -1,6 +1,7 @@
 package analyzer;
 
 import exception.LexicalException;
+import exception.SemanticException;
 import lexer.CLexer;
 import lexer.CLexerConstants;
 import lexer.ParseException;
@@ -48,6 +49,9 @@ public class CAnalyzer {
             checkSyntactical(parser);
         }  catch (ParseException e){
             ExceptionPrintHelper.printParseException(e);
+            return;
+        } catch (SemanticException e){
+            ExceptionPrintHelper.printSemanticException(e);
             return;
         } catch (Exception e) {
             ExceptionPrintHelper.printException(e);

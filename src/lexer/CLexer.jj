@@ -10,6 +10,11 @@ import lexer.ParseException;import parser.ParserNode;
 import java.io.StringReader;
 import java.util.Map;
 import exception.LexicalException;
+import exception.SemanticException;
+import symboltable.SemanticRecord;
+import symboltable.Symbol;
+import symboltable.SymbolTable;
+
 
 public class CLexer {
     private Map<String, Token> symbolTable;
@@ -228,7 +233,16 @@ void parameter(ParserNode parent):
 }
 {
     declaredType = typeSpecifier(node)
-    t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); identifierTable.add(t, declaredType); node.addChild(new ParserNode("IDENTIFIER")); }
+    t=<IDENTIFIER>
+    {
+        symbolTable.putIfAbsent(t.image, t);
+        identifierTable.add(t, declaredType);
+        node.addChild(new ParserNode("IDENTIFIER"));
+        Symbol s = identifierTable.getSymbol(t);
+        if (s != null) {
+            s.setInitialized(true);
+        }
+    }
 }
 
 // parâmetros de uma função
@@ -421,163 +435,490 @@ void conditionalStatement(ParserNode parent):
      ( LOOKAHEAD(2) <KW_ELSE> { recordToken(); node.addChild(new ParserNode("KW_ELSE")); } statement(node))?
 }
 
-void primaryExpression(ParserNode parent):
+SemanticRecord primaryExpression(ParserNode parent):
 {
     ParserNode node = new ParserNode("primaryExpression");
     parent.addChild(node);
     Token t;
+    SemanticRecord result = null;
 }
 {
-    t=<INTEGER_LITERAL> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("INTEGER")); }
-    | t=<DECIMAL_LITERAL> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("DECIMAL")); }
-    | t=<CHAR_LITERAL> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("CHAR")); }
-    | t=<STRING_LITERAL> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("STRING")); }
-    | t=<IDENTIFIER> { identifierTable.checkVariable(t); node.addChild(new ParserNode("IDENTIFIER")); }
-    | <LPAREN> { recordToken(); node.addChild(new ParserNode("LPAREN")); } expression(node) <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN")); }
+    (
+    t=<INTEGER_LITERAL> {
+        symbolTable.putIfAbsent(t.image, t);
+        node.addChild(new ParserNode("INTEGER"));
+        result = new SemanticRecord("int", Integer.parseInt(t.image));
+    }
+    | t=<DECIMAL_LITERAL> {
+        symbolTable.putIfAbsent(t.image, t);
+        node.addChild(new ParserNode("DECIMAL"));
+        result = new SemanticRecord("float", Float.parseFloat(t.image));
+    }
+    | t=<CHAR_LITERAL> {
+        symbolTable.putIfAbsent(t.image, t);
+        node.addChild(new ParserNode("CHAR"));
+        char c = t.image.charAt(1);
+        result = new SemanticRecord("char", c);
+    }
+    | t=<STRING_LITERAL> {
+        symbolTable.putIfAbsent(t.image, t);
+        node.addChild(new ParserNode("STRING"));
+        String val = t.image.substring(1, t.image.length() - 1);
+        result = new SemanticRecord("string", val);
+    }
+    | t=<IDENTIFIER> {
+        identifierTable.checkVariable(t);
+        node.addChild(new ParserNode("IDENTIFIER"));
+        Symbol s = identifierTable.getSymbol(t);
+        if (!s.isInitialized()) throw new SemanticException(t, "Erro: Variável '" + t.image + "' não foi inicializada.");
+        result = new SemanticRecord(s.getType(), s.getValue(), s);
+    }
+    | <LPAREN> {recordToken(); node.addChild(new ParserNode("LPAREN")); }
+    result = expression(node)
+    <RPAREN> { recordToken(); node.addChild(new ParserNode("RPAREN")); }
+    )
+
+    { return result; }
 }
 
-void postfixExpression(ParserNode parent):
+SemanticRecord postfixExpression(ParserNode parent):
 {
     ParserNode node = new ParserNode("postfixExpression");
     parent.addChild(node);
+    SemanticRecord result = null;
+    Token op = null;
 }
 {
-    primaryExpression(node)
+    result = primaryExpression(node)
     (
     LOOKAHEAD(2)
         (
-            <INC> { recordToken(); node.addChild(new ParserNode("INC")); }
-        |   <DEC> { recordToken(); node.addChild(new ParserNode("DEC")); }
+            op = <INC> { recordToken(); node.addChild(new ParserNode("INC")); }
+        |   op = <DEC> { recordToken(); node.addChild(new ParserNode("DEC")); }
         )
     )?
+
+    {
+        if (op == null || result.value == null) return result;
+        if (result.sourceSymbol == null) throw new SemanticException(op, "É necessário um l-value (variável) para incrementar/decrementar.");
+        if (!result.type.equals("int")) throw new SemanticException(op, "++ e -- são permitidos apenas para inteiros.");
+
+        int oldValue = (Integer) result.value;
+        int newVal;
+
+        if (op.kind == INC) newVal = oldValue + 1;
+        else newVal = oldValue - 1;
+
+        result.sourceSymbol.setValue(newVal);
+        return new SemanticRecord(result.type, oldValue, null);
+    }
 }
 
-void unaryExpression(ParserNode parent):
+SemanticRecord unaryExpression(ParserNode parent):
 {
     ParserNode node = new ParserNode("unaryExpression");
     parent.addChild(node);
+    SemanticRecord result = null;
+    Token op = null;
 }
 {
     (
-        <INC>   { recordToken(); node.addChild(new ParserNode("INC")); }
-      | <DEC>   { recordToken(); node.addChild(new ParserNode("DEC")); }
-      | <PLUS>  { recordToken(); node.addChild(new ParserNode("PLUS")); }
-      | <MINUS> { recordToken(); node.addChild(new ParserNode("MINUS")); }
-      | <NOT>   { recordToken(); node.addChild(new ParserNode("NOT")); }
+        op = <INC>   {recordToken(); node.addChild(new ParserNode("INC")); }
+      | op = <DEC>   { recordToken(); node.addChild(new ParserNode("DEC")); }
+      | op = <PLUS>  { recordToken(); node.addChild(new ParserNode("PLUS")); }
+      | op = <MINUS> { recordToken(); node.addChild(new ParserNode("MINUS")); }
+      | op = <NOT>   { recordToken(); node.addChild(new ParserNode("NOT")); }
+      | op = <BIT_NOT> { recordToken(); node.addChild(new ParserNode("BIT_NOT")); }
     )?
-    postfixExpression(node)
+    result = postfixExpression(node)
+
+    {
+        if (op == null) return result;
+
+        Object val = result.getValue();
+        String type = result.getType();
+        Object newVal = null;
+
+        if (val == null) return result;
+
+        if (op.kind == MINUS) {
+            if (type.equals("int")) {
+                newVal = -((Integer) val);
+            } else if (type.equals("float")) {
+                newVal = -((Float) val);
+            } else {
+                throw new SemanticException(op, "Operador '-' inválido para o tipo " + type);
+            }
+        }
+        else if (op.kind == NOT) {
+            if (type.equals("int")) {
+                int v = (Integer) val;
+                newVal = (v == 0) ? 1 : 0;
+            } else {
+                throw new SemanticException(op, "Operador '!' requer um valor inteiro/lógico.");
+            }
+        }
+        else if (op.kind == BIT_NOT) {
+            if (type.equals("int")) {
+                newVal = ~((Integer) val);
+            } else {
+                throw new SemanticException(op, "Operador '~' só é permitido para inteiros.");
+            }
+        }
+        else if (op.kind == INC || op.kind == DEC) {
+            if (result.sourceSymbol == null) {
+                throw new SemanticException(op, "É necessário um l-value (variável) para incrementar/decrementar.");
+            }
+
+            if (type.equals("int")) {
+                int v = (Integer) val;
+                if (op.kind == INC) newVal = v + 1;
+                else newVal = v - 1;
+                result.sourceSymbol.setValue(newVal);
+            } else {
+                throw new SemanticException(op, "++ e -- são permitidos apenas para inteiros.");
+            }
+        }
+
+        if (newVal != null) {
+            result = new SemanticRecord(type, newVal, null);
+        }
+        
+        return result;
+    }
 }
 
-void multiplicativeExpression(ParserNode parent):
+SemanticRecord multiplicativeExpression(ParserNode parent):
 {
     ParserNode node = new ParserNode("multiplicativeExpression");
     parent.addChild(node);
+    SemanticRecord left, right;
+    Token op = null;
 }
 {
-    unaryExpression(node)
+    left = unaryExpression(node)
     (
         (
-              <STAR> {recordToken(); node.addChild(new ParserNode("MULTIPLY")); }
-            | <DIVIDE> {recordToken(); node.addChild(new ParserNode("DIVIDE")); }
-            | <MODULO> {recordToken(); node.addChild(new ParserNode("MODULO")); }
-            | <EXPO> {recordToken(); node.addChild(new ParserNode("EXPO")); }
+            op = <STAR>   { recordToken(); node.addChild(new ParserNode("MULTIPLY")); }
+          | op = <DIVIDE> { recordToken(); node.addChild(new ParserNode("DIVIDE")); }
+          | op = <MODULO> { recordToken(); node.addChild(new ParserNode("MODULO")); }
+          | op = <EXPO>   { recordToken(); node.addChild(new ParserNode("EXPO")); }
         )
-        unaryExpression(node)
+        right = unaryExpression(node)
+        {
+            if (left.type == null || right.type == null){}
+            else { 
+                if (!left.type.equals(right.type)) {
+                    throw new SemanticException(op, "Operação inválida entre tipos diferentes: " + left.type + " e " + right.type);
+                }
+
+                if (!left.type.equals("int") && !left.type.equals("float")) {
+                     throw new SemanticException(op, "Operações aritméticas (*, /, %, ^) permitidas apenas para números.");
+                }
+
+                if (op.kind == MODULO && !left.type.equals("int")) {
+                    throw new SemanticException(op, "O operador '%' (resto) é permitido apenas para números inteiros.");
+                }
+
+                Object newVal = null;
+
+                if (left.value != null && right.value != null) {
+                    if (left.type.equals("int")) {
+                        int v1 = (Integer) left.value;
+                        int v2 = (Integer) right.value;
+
+                        if (op.kind == STAR) {
+                            newVal = v1 * v2;
+                        } else if (op.kind == DIVIDE) {
+                            if (v2 == 0) throw new SemanticException(op, "Erro: Divisão por zero.");
+                            newVal = v1 / v2;
+                        } else if (op.kind == MODULO) {
+                            if (v2 == 0) throw new SemanticException(op, "Erro: Módulo por zero.");
+                            newVal = v1 % v2;
+                        } else if (op.kind == EXPO) {
+                            newVal = (int) Math.pow((double)v1, (double)v2);
+                        }
+                    }
+                    else if (left.type.equals("float")) {
+                        float v1 = (Float) left.value;
+                        float v2 = (Float) right.value;
+
+                        if (op.kind == STAR) {
+                            newVal = v1 * v2;
+                        } else if (op.kind == DIVIDE) {
+                            if (v2 == 0.0f) throw new SemanticException(op, "Erro: Divisão por zero.");
+                            newVal = v1 / v2;
+                        } else if (op.kind == EXPO) {
+                            newVal = (float) Math.pow((double)v1, (double)v2);
+                        }
+                    }
+                }
+                
+                left = new SemanticRecord(left.type, newVal, null);
+            }
+        }
     )*
+
+    { return left; }
 }
 
-void additiveExpression(ParserNode parent):
+SemanticRecord additiveExpression(ParserNode parent):
 {
     ParserNode node = new ParserNode("additiveExpression");
     parent.addChild(node);
+    SemanticRecord left, right;
+    Token op = null;
 }
 {
-    multiplicativeExpression(node)
+    left = multiplicativeExpression(node)
     (
         LOOKAHEAD(2)
-        ( <PLUS> {recordToken(); node.addChild(new ParserNode("PLUS")); } | <MINUS> {recordToken(); node.addChild(new ParserNode("MINUS")); } )
-        multiplicativeExpression(node)
+        ( op = <PLUS> {recordToken(); node.addChild(new ParserNode("PLUS")); } | op = <MINUS> {recordToken(); node.addChild(new ParserNode("MINUS")); } )
+        right = multiplicativeExpression(node)
+        {
+            if (left.type == null || right.type == null) {}
+            else { 
+                if (!left.type.equals(right.type)) {
+                    throw new SemanticException(op, "Operação inválida entre tipos diferentes: " + left.type + " e " + right.type);
+                }
+
+                if (!left.type.equals("int") && !left.type.equals("float")) {
+                     throw new SemanticException(op, "Operações aritméticas (+, -) permitidas apenas para números.");
+                }
+
+                Object newVal = null;
+
+                if (left.getValue() != null && right.getValue() != null) {
+                    if (left.type.equals("int")) {
+                        int v1 = (Integer) left.getValue();
+                        int v2 = (Integer) right.getValue();
+
+                        if (op.kind == PLUS) {
+                            newVal = v1 + v2;
+                        } else if (op.kind == MINUS) {
+                            newVal = v1 - v2;
+                        }
+                    }
+                    else if (left.type.equals("float")) {
+                        float v1 = (Float) left.getValue();
+                        float v2 = (Float) right.getValue();
+
+                        if (op.kind == PLUS) {
+                            newVal = v1 + v2;
+                        } else if (op.kind == MINUS) {
+                            newVal = v1 - v2;
+                        }
+                    }
+                }
+                
+                left = new SemanticRecord(left.type, newVal, null);
+            }
+        }
     )*
+
+    { return left; }
 }
 
-void bitExpression(ParserNode parent):
+SemanticRecord bitExpression(ParserNode parent):
 {
     ParserNode node = new ParserNode("bitExpression");
     parent.addChild(node);
+    SemanticRecord left, right;
+    Token op = null;
 }
 {
-    additiveExpression(node)
+    left = additiveExpression(node)
     (
         (
-              <BIT_AND> {recordToken(); node.addChild(new ParserNode("BIT_AND")); }
-            | <BIT_NOT> {recordToken(); node.addChild(new ParserNode("BIT_NOT")); }
-            | <BIT_XOR> {recordToken(); node.addChild(new ParserNode("BIT_XOR")); }
-            | <LSHIFT> {recordToken(); node.addChild(new ParserNode("LSHIFT")); }
-            | <RSHIFT> {recordToken(); node.addChild(new ParserNode("RSHIFT")); }
+              op = <BIT_AND> {recordToken(); node.addChild(new ParserNode("BIT_AND")); }
+            | op = <BIT_OR>  {recordToken(); node.addChild(new ParserNode("BIT_OR"));  }
+            | op = <BIT_XOR> {recordToken(); node.addChild(new ParserNode("BIT_XOR")); }
+            | op = <LSHIFT>  {recordToken(); node.addChild(new ParserNode("LSHIFT"));  }
+            | op = <RSHIFT>  {recordToken(); node.addChild(new ParserNode("RSHIFT"));  }
         )
-        additiveExpression(node)
+        right = additiveExpression(node)
+        {
+            if (left.type != null && right.type != null) {
+                if (!left.type.equals("int") || !right.type.equals("int")) {
+                    throw new SemanticException(op, "Operações bit-a-bit (&, |, ^, <<, >>) exigem operandos inteiros.");
+                }
+
+                Object newVal = null;
+                if (left.getValue() != null && right.getValue() != null) {
+                    int v1 = (Integer) left.getValue();
+                    int v2 = (Integer) right.getValue();
+
+                    if (op.kind == BIT_AND)      newVal = v1 & v2;
+                    else if (op.kind == BIT_OR)  newVal = v1 | v2;
+                    else if (op.kind == BIT_XOR) newVal = v1 ^ v2;
+                    else if (op.kind == LSHIFT)  newVal = v1 << v2;
+                    else if (op.kind == RSHIFT)  newVal = v1 >> v2;
+                }
+                
+                left = new SemanticRecord("int", newVal, null);
+            }
+        }
     )*
+    
+    { return left; }
 }
 
 
-void relationalExpression(ParserNode parent):
+SemanticRecord relationalExpression(ParserNode parent):
 {
     ParserNode node = new ParserNode("relationalExpression");
     parent.addChild(node);
+    SemanticRecord left, right;
+    Token op = null;
 }
 {
-    bitExpression(node)
+    left = bitExpression(node)
     (
         (
-              <LT> {recordToken(); node.addChild(new ParserNode("LT")); }
-            | <GT> {recordToken(); node.addChild(new ParserNode("GT")); }
-            | <LE> {recordToken(); node.addChild(new ParserNode("LE")); }
-            | <GE> {recordToken(); node.addChild(new ParserNode("GE")); }
-            | <EQ> {recordToken(); node.addChild(new ParserNode("EQ")); }
-            | <NE> {recordToken(); node.addChild(new ParserNode("NE")); }
+              op = <LT>  {recordToken(); node.addChild(new ParserNode("LT")); }
+            | op = <GT>  {recordToken(); node.addChild(new ParserNode("GT")); }
+            | op = <LE>  {recordToken(); node.addChild(new ParserNode("LE")); }
+            | op = <GE>  {recordToken(); node.addChild(new ParserNode("GE")); }
+            | op = <EQ>  {recordToken(); node.addChild(new ParserNode("EQ")); }
+            | op = <NE> {recordToken(); node.addChild(new ParserNode("NE"));  }
         )
-        bitExpression(node)
+        right = bitExpression(node)
+        {
+            if (left.type != null && right.type != null) {
+                if (!left.type.equals(right.type)) {
+                     throw new SemanticException(op, "Comparação inválida entre tipos diferentes: " + left.type + " e " + right.type);
+                }
+
+                Object newVal = null;
+                if (left.getValue() != null && right.getValue() != null) {
+                    boolean res = false;
+                    
+                    if (left.type.equals("int")) {
+                        int v1 = (Integer) left.getValue();
+                        int v2 = (Integer) right.getValue();
+                        
+                        if (op.kind == LT)      res = v1 < v2;
+                        else if (op.kind == GT) res = v1 > v2;
+                        else if (op.kind == LE) res = v1 <= v2;
+                        else if (op.kind == GE) res = v1 >= v2;
+                        else if (op.kind == EQ) res = v1 == v2;
+                        else if (op.kind == NE) res = v1 != v2;
+                    }
+                    else if (left.type.equals("float")) {
+                        float v1 = (Float) left.getValue();
+                        float v2 = (Float) right.getValue();
+                        
+                        if (op.kind == LT)      res = v1 < v2;
+                        else if (op.kind == GT) res = v1 > v2;
+                        else if (op.kind == LE) res = v1 <= v2;
+                        else if (op.kind == GE) res = v1 >= v2;
+                        else if (op.kind == EQ) res = v1 == v2;
+                        else if (op.kind == NE) res = v1 != v2;
+                    }
+                    
+                    newVal = res ? 1 : 0;
+                }
+                
+                left = new SemanticRecord("int", newVal, null);
+            }
+        }
     )*
+    
+    { return left; }
 }
 
-void logicalAndExpression(ParserNode parent):
+SemanticRecord logicalAndExpression(ParserNode parent):
 {
     ParserNode node = new ParserNode("andExpression");
     parent.addChild(node);
+    SemanticRecord left, right;
+    Token op = null;
 }
 {
-    relationalExpression(node)
-    ( <AND> {recordToken(); node.addChild(new ParserNode("AND")); } relationalExpression(node) )*
+    left = relationalExpression(node)
+    (
+        op = <AND> {recordToken(); node.addChild(new ParserNode("AND")); }
+        right = relationalExpression(node)
+        {
+            if (left.type != null && right.type != null) {
+                if (!left.type.equals("int") || !right.type.equals("int")) {
+                    throw new SemanticException(op, "Operador lógico '&&' requer expressões inteiras.");
+                }
+
+                Object newVal = null;
+                if (left.getValue() != null && right.getValue() != null) {
+                    int v1 = (Integer) left.getValue();
+                    int v2 = (Integer) right.getValue();
+                    
+                    boolean res = (v1 != 0) && (v2 != 0);
+                    newVal = res ? 1 : 0;
+                }
+                
+                left = new SemanticRecord("int", newVal, null);
+            }
+        }
+    )*
+    
+    { return left; }
 }
 
 
-void logicalOrExpression(ParserNode parent):
+SemanticRecord logicalOrExpression(ParserNode parent):
 {
     ParserNode node = new ParserNode("logical_or_expression");
     parent.addChild(node);
+    SemanticRecord left, right;
+    Token op = null;
 }
 {
-     logicalAndExpression(node)
-     ( <OR>{recordToken(); node.addChild(new ParserNode("OR")); }   logicalAndExpression(node))*
+    left = logicalAndExpression(node)
+    (
+        op = <OR> {recordToken(); node.addChild(new ParserNode("OR")); }
+        right = logicalAndExpression(node)
+        {
+            if (left.type != null && right.type != null) {
+                if (!left.type.equals("int") || !right.type.equals("int")) {
+                    throw new SemanticException(op, "Operador lógico '||' requer expressões inteiras.");
+                }
+                Object newVal = null;
+                
+                if (left.getValue() != null && right.getValue() != null) {
+                    int v1 = (Integer) left.getValue();
+                    int v2 = (Integer) right.getValue();
+                    
+                    boolean res = (v1 != 0) || (v2 != 0);
+                    newVal = res ? 1 : 0;
+                }
+                
+                left = new SemanticRecord("int", newVal, null);
+            }
+        }
+    )*
+    
+    { return left; }
 }
 
-void assignmentOperators(ParserNode parent):
+Token assignmentOperators(ParserNode parent):
 {
     ParserNode node = new ParserNode("assignmentOperators");
     parent.addChild(node);
+    Token t = null;
 }
 {
-      <ASSIGN> {recordToken(); node.addChild(new ParserNode("ASSIGN")); }
-    | <PLUS_ASSIGN> {recordToken(); node.addChild(new ParserNode("PLUS_ASSIGN")); }
-    | <MINUS_ASSIGN> {recordToken(); node.addChild(new ParserNode("MINUS_ASSIGN")); }
-    | <MULTIPLY_ASSIGN> {recordToken(); node.addChild(new ParserNode("MULTIPLY_ASSIGN")); }
-    | <DIVIDE_ASSIGN> {recordToken(); node.addChild(new ParserNode("DIVIDE_ASSIGN")); }
-    | <MODULO_ASSIGN> {recordToken(); node.addChild(new ParserNode("MODULO_ASSIGN")); }
-    | <BIT_XOR_ASSIGN> {recordToken(); node.addChild(new ParserNode("BIT_XOR_ASSIGN")); }
-    | <BIT_AND_ASSIGN> {recordToken(); node.addChild(new ParserNode("BIT_AND_ASSIGN")); }
-    | <BIT_OR_ASSIGN> {recordToken(); node.addChild(new ParserNode("BIT_OR_ASSIGN")); }
-    | <LSHIFT_ASSIGN> {recordToken(); node.addChild(new ParserNode("LSHIFT_ASSIGN")); }
-    | <RSHIFT_ASSIGN> {recordToken(); node.addChild(new ParserNode("RSHIFT_ASSIGN")); }
+    (
+          t = <ASSIGN>          { recordToken(); node.addChild(new ParserNode("ASSIGN")); }
+        | t = <PLUS_ASSIGN>     { recordToken(); node.addChild(new ParserNode("PLUS_ASSIGN")); }
+        | t = <MINUS_ASSIGN>    { recordToken(); node.addChild(new ParserNode("MINUS_ASSIGN")); }
+        | t = <MULTIPLY_ASSIGN> { recordToken(); node.addChild(new ParserNode("MULTIPLY_ASSIGN")); }
+        | t = <DIVIDE_ASSIGN>   { recordToken(); node.addChild(new ParserNode("DIVIDE_ASSIGN")); }
+        | t = <MODULO_ASSIGN>   { recordToken(); node.addChild(new ParserNode("MODULO_ASSIGN")); }
+        | t = <BIT_XOR_ASSIGN>  { recordToken(); node.addChild(new ParserNode("BIT_XOR_ASSIGN")); }
+        | t = <BIT_AND_ASSIGN>  { recordToken(); node.addChild(new ParserNode("BIT_AND_ASSIGN")); }
+        | t = <BIT_OR_ASSIGN>   { recordToken(); node.addChild(new ParserNode("BIT_OR_ASSIGN")); }
+        | t = <LSHIFT_ASSIGN>   { recordToken(); node.addChild(new ParserNode("LSHIFT_ASSIGN")); }
+        | t = <RSHIFT_ASSIGN>   { recordToken(); node.addChild(new ParserNode("RSHIFT_ASSIGN")); }
+    )
+    { return t; }
 }
 
 void assignmentStatement(ParserNode parent):
@@ -585,11 +926,87 @@ void assignmentStatement(ParserNode parent):
     ParserNode node = new ParserNode("assignmentStatement");
     parent.addChild(node);
     Token t;
+    Token op;
+    SemanticRecord result;
+    Symbol s;
 }
 {
-    t=<IDENTIFIER> { symbolTable.putIfAbsent(t.image, t); node.addChild(new ParserNode("IDENTIFIER")); }
-    assignmentOperators(node)
-    expression(node)
+    t = <IDENTIFIER> 
+    { 
+        identifierTable.checkVariable(t); 
+        node.addChild(new ParserNode("IDENTIFIER")); 
+        s = identifierTable.getSymbol(t);
+    }
+    op = assignmentOperators(node)
+    result = expression(node)
+
+    {
+        if (result.type != null) {
+            if (op.kind == ASSIGN) {
+                if (!s.getType().equals(result.type)) {
+                    throw new SemanticException(t, "Erro de Atribuição: Variável '" + t.image + 
+                        "' é " + s.getType() + " mas tentou receber " + result.type);
+                }
+                s.setValue(result.getValue());
+            }
+            else {
+                if (!s.isInitialized()) {
+                    throw new SemanticException(t, "Erro: Variável '" + t.image + 
+                        "' precisa ser inicializada antes de usar operador composto (" + op.image + ").");
+                }
+                if (!s.getType().equals(result.type)) {
+                     throw new SemanticException(op, "Tipos incompatíveis para operação " + op.image);
+                }
+                
+                Object currentVal = s.getValue();
+                Object exprVal = result.getValue();
+                Object finalVal = null;
+
+                if (currentVal != null && exprVal != null) {
+                    if (s.getType().equals("int")) {
+                        int v1 = (Integer) currentVal;
+                        int v2 = (Integer) exprVal;
+
+                        if (op.kind == PLUS_ASSIGN)          finalVal = v1 + v2;
+                        else if (op.kind == MINUS_ASSIGN)    finalVal = v1 - v2;
+                        else if (op.kind == MULTIPLY_ASSIGN) finalVal = v1 * v2;
+                        else if (op.kind == DIVIDE_ASSIGN) {
+                             if(v2==0) throw new SemanticException(op, "Divisão por zero.");
+                             finalVal = v1 / v2;
+                        }
+                        else if (op.kind == MODULO_ASSIGN)   finalVal = v1 % v2;
+                        else if (op.kind == BIT_AND_ASSIGN)  finalVal = v1 & v2;
+                        else if (op.kind == BIT_OR_ASSIGN)   finalVal = v1 | v2;
+                        else if (op.kind == BIT_XOR_ASSIGN)  finalVal = v1 ^ v2;
+                        else if (op.kind == LSHIFT_ASSIGN)   finalVal = v1 << v2;
+                        else if (op.kind == RSHIFT_ASSIGN)   finalVal = v1 >> v2;
+                    }
+                    else if (s.getType().equals("float")) {
+                        if (op.kind == MODULO_ASSIGN || op.kind == BIT_AND_ASSIGN || 
+                            op.kind == BIT_OR_ASSIGN || op.kind == BIT_XOR_ASSIGN || 
+                            op.kind == LSHIFT_ASSIGN || op.kind == RSHIFT_ASSIGN) {
+                                throw new SemanticException(op, "Operador " + op.image + " inválido para float.");
+                        }
+
+                        float v1 = (Float) currentVal;
+                        float v2 = (Float) exprVal;
+
+                        if (op.kind == PLUS_ASSIGN)          finalVal = v1 + v2;
+                        else if (op.kind == MINUS_ASSIGN)    finalVal = v1 - v2;
+                        else if (op.kind == MULTIPLY_ASSIGN) finalVal = v1 * v2;
+                        else if (op.kind == DIVIDE_ASSIGN) {
+                             if(v2==0.0f) throw new SemanticException(op, "Divisão por zero.");
+                             finalVal = v1 / v2;
+                        }
+                    }
+                }
+                if (finalVal != null) {
+                    s.setValue(finalVal);
+                }
+            }
+        }
+    }
+    
     endOfStatement(node)
 }
 
@@ -607,13 +1024,16 @@ void importStatement(ParserNode parent):
 
 
 // Expressão
-void expression(ParserNode parent):
+SemanticRecord expression(ParserNode parent):
 {
     ParserNode node = new ParserNode("expression");
     parent.addChild(node);
+    SemanticRecord result;
 }
 {
-    logicalOrExpression(node)
+    result = logicalOrExpression(node)
+
+    { return result; }
 }
 
 void expressionStatement(ParserNode parent) :
@@ -633,16 +1053,37 @@ void variableDeclaration(ParserNode parent):
     parent.addChild(node);
     Token t;
     String declaredType;
+    SemanticRecord initValue = null;
+    Symbol s = null;
 }
 {
-    declaredType= typeSpecifier(node)
-    t=<IDENTIFIER>
+    declaredType = typeSpecifier(node)
+    t = <IDENTIFIER>
 
     {
-    identifierTable.add(t, declaredType);
-    node.addChild(new ParserNode("IDENTIFIER"));
-}
-    (<ASSIGN> { recordToken(); node.addChild(new ParserNode("ASSIGN")); } expression(node))?
+        identifierTable.add(t, declaredType);
+        node.addChild(new ParserNode("IDENTIFIER"));
+        s = identifierTable.getSymbol(t);
+    }
+    
+    (
+        <ASSIGN> { recordToken(); node.addChild(new ParserNode("ASSIGN")); } 
+        
+        initValue = expression(node)
+        {
+            if (initValue.type != null) {
+                boolean tiposCompativeis = declaredType.equals(initValue.type) ||
+                                               (declaredType.equals("char*") && initValue.type.equals("string"));
+
+                if (!tiposCompativeis) {
+                    throw new SemanticException(t, "Erro de Tipo: Variável '" + t.image +
+                        "' é do tipo " + declaredType + " mas está sendo inicializada com " + initValue.type);
+                }
+                s.setValue(initValue.getValue());
+            }
+        }
+    )?
+    
     endOfStatement(node)
 }
 
