@@ -1,11 +1,17 @@
 package print;
 
 import exception.LexicalException;
+import exception.SemanticException;
 import lexer.ParseException;
 
 import static lexer.CLexerConstants.tokenImage;
 
 public class ExceptionPrintHelper {
+
+    public static void printSemanticException(SemanticException e){
+        System.err.println("\nErro semântico:");
+        System.err.println(e.getMessage());
+    }
     public static void printLexicalException(LexicalException e){
         System.err.println("\nErro léxico:");
         System.err.println(e.getMessage());

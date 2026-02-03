@@ -18,23 +18,52 @@ int main() {
     char* 1hello = "world";
 
     // sem terminação
-    for (int i=0; i<n; i++) c++
+    for (int i=0; i<10; i++) int a = 10
 
     // switch sem default
-    papibagrifar (valor) {
+   papibagrifar (6) {
         case 1:
-            a++;
+            break;
         case 2:
-            funcao(1);
+            int k = 2893849 * 10;
             break;
         case 3:
-            outraFuncao();
+            float w = 110.1;
     }
+
+    int a;
+    // variável não inicializada
+    a += 1;
+
+    a = 10;
+    // divisão por zero
+    a /= 0;
+
+    // operação com tipos diferentes
+    float b = 0.1;
+    int c = a / b;
+
+    // operação ++ em literal
+    ++a++;
+
+    // assignment com tipo invalido
+    int pal = "palavra";
+
+    char* hello = "world";
+
+    // operador inválido para tipo
+    a = !hello;
+
+    float pi = 3.14159265358979323846264338327950;
+    // módulo com float
+    pi = pi % 10.0;
+
+    // funcao nao declarada
+    funcao(1);
 
     // bloco aberto
         while(1){
-            print("mensagem");
-
+            int v = 12 << 2;
 
     return 0;
 }

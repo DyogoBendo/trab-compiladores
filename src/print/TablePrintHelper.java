@@ -41,7 +41,7 @@ public class TablePrintHelper {
         for (Symbol symbol : symbolList){
             System.out.println("Token: " + symbol.getToken());
             System.out.println("Posição que aparece pela primeira vez (linha, coluna): (" + symbol.getToken().beginLine + "," + symbol.getToken().beginColumn + ")");
-            System.out.println("Tipo do token: " + (symbol.getType() == null  ? "-" : symbol.getType()));
+            System.out.println("Informações do símbolo: " + symbol);
             System.out.println(DELIMITER);
         }
     }
